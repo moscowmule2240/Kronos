@@ -396,7 +396,24 @@ def _resolve_amp_dtype(amp_dtype):
     )
 
 
-def auto_regressive_inference(tokenizer, model, x, x_stamp, y_stamp, max_context, pred_len, clip=5, T=1.0, top_k=0, top_p=0.99, sample_count=5, verbose=False, amp_dtype=None):
+def auto_regressive_inference(tokenizer, model, x, x_stamp, y_stamp, max_context, pred_len, clip=5, T=1.0, top_k=0, top_p=0.99, sample_count=5, verbose=False, average_samples=True, amp_dtype=None):
+    """Autoregressively sample future tokens and decode them to the feature space.
+
+    Generates ``sample_count`` Monte Carlo trajectories in parallel.
+
+    Args:
+        average_samples (bool): If True (default), average over the sample
+            dimension and return shape ``(batch, total_seq, n_feat)`` -- the
+            original, backward-compatible behavior. If False, keep the
+            per-sample trajectories and return shape
+            ``(batch, sample_count, total_seq, n_feat)`` so callers can access
+            the full predictive distribution (e.g. probabilistic forecasting /
+            uncertainty estimation).
+        amp_dtype: None for fp32 (default); "bfloat16" enables autocast.
+
+    Returns:
+        np.ndarray: Decoded predictions; shape depends on ``average_samples``.
+    """
     autocast_dtype, amp_enabled = _resolve_amp_dtype(amp_dtype)
 
     with torch.no_grad(), torch.autocast(device_type=x.device.type, dtype=autocast_dtype, enabled=amp_enabled):
@@ -476,7 +493,8 @@ def auto_regressive_inference(tokenizer, model, x, x_stamp, y_stamp, max_context
         z = tokenizer.decode(input_tokens, half=True)
         z = z.reshape(-1, sample_count, z.size(1), z.size(2))
         preds = z.float().cpu().numpy()
-        preds = np.mean(preds, axis=1)
+        if average_samples:
+            preds = np.mean(preds, axis=1)
 
         return preds
 
