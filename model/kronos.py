@@ -386,7 +386,23 @@ def sample_from_logits(logits, temperature=1.0, top_k=None, top_p=None, sample_l
     return x
 
 
-def auto_regressive_inference(tokenizer, model, x, x_stamp, y_stamp, max_context, pred_len, clip=5, T=1.0, top_k=0, top_p=0.99, sample_count=5, verbose=False):
+def auto_regressive_inference(tokenizer, model, x, x_stamp, y_stamp, max_context, pred_len, clip=5, T=1.0, top_k=0, top_p=0.99, sample_count=5, verbose=False, average_samples=True):
+    """Autoregressively sample future tokens and decode them to the feature space.
+
+    Generates ``sample_count`` Monte Carlo trajectories in parallel.
+
+    Args:
+        average_samples (bool): If True (default), average over the sample
+            dimension and return shape ``(batch, total_seq, n_feat)`` -- the
+            original, backward-compatible behavior. If False, keep the
+            per-sample trajectories and return shape
+            ``(batch, sample_count, total_seq, n_feat)`` so callers can access
+            the full predictive distribution (e.g. probabilistic forecasting /
+            uncertainty estimation).
+
+    Returns:
+        np.ndarray: Decoded predictions; shape depends on ``average_samples``.
+    """
     with torch.no_grad():
         x = torch.clip(x, -clip, clip)
 
@@ -464,7 +480,8 @@ def auto_regressive_inference(tokenizer, model, x, x_stamp, y_stamp, max_context
         z = tokenizer.decode(input_tokens, half=True)
         z = z.reshape(-1, sample_count, z.size(1), z.size(2))
         preds = z.cpu().numpy()
-        preds = np.mean(preds, axis=1)
+        if average_samples:
+            preds = np.mean(preds, axis=1)
 
         return preds
 
